@@ -1,4 +1,4 @@
-# Copyright 2018 Google LLC
+# Copyright 2018-2022 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM ubuntu:20.04
+FROM debian:bullseye
 
 ENV DEBIAN_FRONTEND noninteractive
 
@@ -28,37 +28,30 @@ ENV LANG C.UTF-8
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     apt-transport-https \
-    aspell \
-    aspell-en \
     build-essential \
     ca-certificates \
-    dictionaries-common \
     curl \
     dirmngr \
-    enchant \
+    gdb \
     git \
+    gpg \
     gpg-agent \
-    graphviz \
-    hunspell-en-us \
+    lcov \
     libbz2-dev \
-    libdb5.3-dev \
-    libenchant1c2a \
-    libexpat1-dev \
     libffi-dev \
+    libgdbm-compat-dev \
+    libgdbm-dev \
     liblzma-dev \
-    libreadline-dev \
-    libsnappy-dev \
-    libssl-dev \
+    libncurses5-dev \
+    libreadline6-dev \
     libsqlite3-dev \
-    memcached \
-    portaudio19-dev \
-    redis-server \
-    software-properties-common \
+    libssl-dev \
+    lsb-release \
+    lzma \
+    lzma-dev \
+    pkg-config \
     ssh \
     sudo \
-    tcl \
-    tcl-dev \
-    tk \
     tk-dev \
     uuid-dev \
     wget \
@@ -67,12 +60,8 @@ RUN apt-get update \
   && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/* \
   && rm -f /var/cache/apt/archives/*.deb
-
-# https://github.com/f-secure-foundry/usbarmory-debian-base_image/issues/9
-RUN mkdir /tmp/gpg \
-&& echo "disable-ipv6" >> /tmp/gpg/dirmngr.conf
-
-ENV GNUPGHOME /tmp/gpg
+  
+ENV GNUPGHOME /root/.gnupg
 # Fetch keys for verifying python installations
 # Do this early so the build fails quickly if the keyserver is unavailable
 # Consider one of the alternatives here if this continues to be flaky:
@@ -80,24 +69,20 @@ ENV GNUPGHOME /tmp/gpg
 # See https://www.python.org/downloads/ 'OpenPGP Public Keys' for new keys.
 RUN set -ex \
   && gpg --keyserver keyserver.ubuntu.com --recv-keys \
-      # 2.7.18 (Benjamin Peterson)
-      C01E1CAD5EA2C4F0B8E3571504C367C218ADD4FF \
-      # 3.4.10, 3.5.10 (Larry Hastings)
-      97FC712E4C024BBEA48A61ED3A5CA953F73C700D \
       # 3.6.15, 3.7.12 (Ned Deily)
       0D96DF4D4110E5C43FBFB17F2D347EA6AA65421D \
       # 3.8.12 and 3.9.7 (Łukasz Langa)
       E3FF2839C048B25C084DEBE9B26995E310250568 \
       # 3.10.x and 3.11.x (Pablo Galindo Salgado)
       A035C8C19219BA821ECEA86B64E628F8D684696D
-
+      
 # Install docker
-RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+RUN mkdir -p /etc/apt/keyrings
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
-RUN add-apt-repository \
-   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-   $(lsb_release -cs) \
-   stable"
+RUN echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -109,7 +94,8 @@ RUN apt-get update \
 
 # Install Microsoft ODBC 17 Driver and unixodbc for testing SQL Server samples
 RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
-  && curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+  && curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+
   && apt-get update \
   && ACCEPT_EULA=Y apt-get install -y --no-install-recommends \
     msodbcsql17 \
@@ -120,7 +106,7 @@ RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
   && rm -f /var/cache/apt/archives/*.deb
 
 # Install the desired versions of Python.
-RUN for PYTHON_VERSION in 2.7.18 3.6.15 3.7.12 3.8.12 3.9.7 3.10.0; do \
+RUN for PYTHON_VERSION in 3.7.13 3.8.13 3.9.13 3.10.4; do \
   set -ex \
     && wget --quiet --no-check-certificate -O python-${PYTHON_VERSION}.tar.xz "https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz" \
     && wget --quiet --no-check-certificate -O python-${PYTHON_VERSION}.tar.xz.asc "https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz.asc" \
@@ -132,8 +118,6 @@ RUN for PYTHON_VERSION in 2.7.18 3.6.15 3.7.12 3.8.12 3.9.7 3.10.0; do \
     && cd /usr/src/python-${PYTHON_VERSION} \
     && ./configure \
         --enable-shared \
-      # This works only on Python 2.7 and throws a warning on every other
-      # version, but seems otherwise harmless.
         --enable-unicode=ucs4 \
         --with-system-ffi \
         --without-ensurepip \
@@ -146,12 +130,12 @@ RUN for PYTHON_VERSION in 2.7.18 3.6.15 3.7.12 3.8.12 3.9.7 3.10.0; do \
   && rm -r "$GNUPGHOME"
 
 
-# Install pip on Python 3.6 only.
+# Install pip on Python 3.7 only.
 # If the environment variable is called "PIP_VERSION", pip explodes with
 # "ValueError: invalid truth value '<VERSION>'"
-ENV PYTHON_PIP_VERSION 21.3.1
+ENV PYTHON_PIP_VERSION 22.1.2
 RUN wget --no-check-certificate -O /tmp/get-pip.py 'https://bootstrap.pypa.io/get-pip.py' \
-    && python3.6 /tmp/get-pip.py "pip==$PYTHON_PIP_VERSION" \
+    && python3.7 /tmp/get-pip.py "pip==$PYTHON_PIP_VERSION" \
 
 
   # we use "--force-reinstall" for the case where the version of pip we're trying to install is the same as the version bundled with Python
@@ -175,13 +159,12 @@ RUN python3 -m pip
 RUN pip install --no-cache-dir virtualenv
 
 # Setup Cloud SDK
-ENV CLOUD_SDK_VERSION 360.0.0
+ENV CLOUD_SDK_VERSION 393.0.0
 # Use system python for cloud sdk.
-ENV CLOUDSDK_PYTHON python3.6
+ENV CLOUDSDK_PYTHON python3.7
 RUN wget https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-$CLOUD_SDK_VERSION-linux-x86_64.tar.gz
 RUN tar xzf google-cloud-sdk-$CLOUD_SDK_VERSION-linux-x86_64.tar.gz
 RUN /google-cloud-sdk/install.sh
 ENV PATH /google-cloud-sdk/bin:$PATH
 
-# Enable redis-server on boot.
-RUN redis-server /etc/redis/redis.conf
+
