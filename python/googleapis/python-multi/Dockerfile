@@ -76,14 +76,6 @@ RUN set -ex \
       # 3.10.x and 3.11.x (Pablo Galindo Salgado)
       A035C8C19219BA821ECEA86B64E628F8D684696D
       
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-    docker-ce \
-  && apt-get clean autoclean \
-  && apt-get autoremove -y \
-  && rm -rf /var/lib/apt/lists/* \
-  && rm -f /var/cache/apt/archives/*.deb
-
 # Install Microsoft ODBC 17 Driver and unixodbc for testing SQL Server samples
 RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
   && curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list \
